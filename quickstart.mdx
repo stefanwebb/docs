@@ -1,80 +1,347 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Start agent model development in minutes"
+icon: person-running-fast
 ---
 
-## Get started in three steps
+Let's start by installing the latest stable release of Oumi:
 
-Get your documentation site running locally and make your first customization.
+```bash
+pip install oumi
+```
 
-### Step 1: Set up your local environment
+We're going to use the `oumi` command-line interface (CLI) to train, evaluate, and run inference with a model. We'll use a small model, [`SmolLM-135M`](https://huggingface.co/blog/smollm), so that the examples can run fast on both CPU and GPU.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+## Oumi CLI
 
-### Step 2: Deploy your changes
+The general structure of Oumi CLI commands is:
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+```bash
+oumi <command> [options]
+```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+For detailed help on any command, you can use the `--help` option:
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+```bash
+oumi --help            # for general help
+oumi <command> --help  # for command-specific help
+```
 
-### Step 3: Go live
+| Command | Description                           |
+| -------- | ------------------------------------- |
+| `chat`     | Launch a chatbot interface for a model                     |
+| `infer`      | Perform model inference                          |
+| `train`      | Fine-tune (or pre-train) a model                          |
+| `evaluate`   | Calculate a benchmark metric on a model |
+| `judge`   | Evalute a model with LLM-as-a-Judge |
+| `launch`   | Initiate an Oumi task on cloud resources (AWS, GCP, Azure, etc.) |
+| `distributed` | Run an Oumi task using multiple GPUs |
+| `quantize`   | Quantize a model using AWQ | 
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+Let's go through some examples of the most important commands.
 
-## Next steps
+## Fine-tuning
+The following command will start training using an included recipe:
 
-Now that you have your docs running, explore these key features:
+```yaml configs/recipes/smollm/sft/135m/quickstart_train.yaml
+model:
+  model_name: "HuggingFaceTB/SmolLM2-135M-Instruct"
+  model_max_length: 2048
+  torch_dtype_str: "bfloat16"
+  attn_implementation: "sdpa"
+  load_pretrained_weights: True
+  trust_remote_code: True
 
-<CardGroup cols={2}>
+data:
+  train:
+    datasets:
+      - dataset_name: "yahma/alpaca-cleaned"
+    target_col: "prompt"
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+training:
+  trainer_type: TRL_SFT
+  save_final_model: True
+  save_steps: 100
+  max_steps: 10
+  per_device_train_batch_size: 4
+  gradient_accumulation_steps: 4
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+  ddp_find_unused_parameters: False
+  optimizer: "adamw_torch"
+  learning_rate: 2.0e-05
+  compile: False
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+  dataloader_num_workers: "auto"
+  dataloader_prefetch_factor: 32
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+  seed: 192847
+  use_deterministic: True
 
-</CardGroup>
+  logging_steps: 5
+  log_model_summary: False
+  empty_device_cache_steps: 50
+  run_name: "smollm135m.fft.quickstart"
+  output_dir: "output/smollm135m.fft"
+  include_performance_metrics: True
+```
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+```bash
+oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml
+```
+
+### Overriding parameters
+Any Oumi command which takes a config path as an argument (`train`, `evaluate`, `infer`, etc.) can override parameters from the command line. For example:
+
+```bash
+oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml \
+  --training.max_steps 20 \
+  --training.learning_rate 1e-4 \
+  --data.train.datasets[0].shuffle true \
+  --training.output_dir output/smollm-135m-sft
+```
+
+### Changing datasets
+To run the same recipe on your own dataset (e.g., in our supported JSON or JSONL formats), you can override the dataset name and path. You can try this functionality out by downloading the `alpaca_cleaned` dataset manually via the huggingface CLI, then including that local path in your run.
+
+```bash
+hf download yahma/alpaca-cleaned --repo-type dataset --local-dir /path/to/local/dataset
+
+oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml \
+  --data.train.datasets "[{dataset_name: text_sft, dataset_path: /path/to/local/dataset}]" \
+  --training.output_dir output/smollm-135m-sft-custom
+```
+
+### Multi-GPU training
+You can also train on multiple GPUs (make sure to [install the GPU dependencies](/get_started/installation.md#optional-dependencies) if not already installed).
+
+For example, if you have a machine with 4 GPUs, you can run this command to launch a local distributed training run:
+
+```bash
+oumi distributed torchrun \
+  -m oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml \
+  --training.output_dir output/smollm-135m-sft-dist
+```
+
+You can also use torchrun directly in standalone mode.
+
+```bash
+torchrun --standalone --nproc-per-node 4 --log-dir ./logs \
+  -m oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml \
+  --training.output_dir output/smollm-135m-sft-dist
+```
+
+## Evaluation
+To evaluate a trained model on a standard benchmark:
+
+```yaml configs/recipes/smollm/evaluation/135m/quickstart_eval.yaml
+model:
+  model_name: "HuggingFaceTB/SmolLM2-135M-Instruct"
+  model_max_length: 2048
+  torch_dtype_str: "bfloat16"
+  attn_implementation: "sdpa"
+  load_pretrained_weights: True
+  trust_remote_code: True
+
+generation:
+  batch_size: 4
+
+tasks:
+  # For all available tasks, see https://oumi.ai/docs/en/latest/user_guides/evaluate/evaluate.html
+  - evaluation_backend: lm_harness
+    task_name: mmlu_college_computer_science
+    eval_kwargs:
+      num_fewshot: 5
+```
+
+Using a model downloaded from HuggingFace:
+
+```bash
+oumi evaluate -c configs/recipes/smollm/evaluation/135m/quickstart_eval.yaml \
+  --model.model_name HuggingFaceTB/SmolLM2-135M-Instruct
+```
+
+Or, with our newly trained model saved on disk:
+
+```bash
+oumi evaluate -c configs/recipes/smollm/evaluation/135m/quickstart_eval.yaml \
+  --model.model_name output/smollm135m.fft
+```
+
+If you saved your model to a different directory such as `output/smollm-135m-sft-dist`, you need only change `--model.model_name`.
+
+To explore the benchmarks that our evaluations support, including HuggingFace leaderboards and AlpacaEval, visit our `evaluation guide`.
+
+## Inference
+
+To run inference with a trained model:
+
+```yaml configs/recipes/smollm/inference/135m_infer.yaml
+model:
+  model_name: "HuggingFaceTB/SmolLM2-135M-Instruct"
+  model_max_length: 2048
+  torch_dtype_str: "bfloat16"
+  attn_implementation: "sdpa"
+  load_pretrained_weights: True
+  trust_remote_code: True
+
+generation:
+  max_new_tokens: 100
+  batch_size: 4
+
+engine: NATIVE
+```
+
+Using a model downloaded from HuggingFace:
+
+```bash
+oumi infer -c configs/recipes/smollm/inference/135m_infer.yaml \
+  --generation.max_new_tokens 40 \
+  --generation.temperature 0.7 \
+  --interactive
+```
+
+Or, with our newly trained model saved on disk:
+
+```bash
+oumi infer -c configs/recipes/smollm/inference/135m_infer.yaml \
+  --model.model_name output/smollm135m.fft \
+  --generation.max_new_tokens 40 \
+  --generation.temperature 0.7 \
+  --interactive
+```
+
+To learn more about running inference locally or remotely (including OpenAI, Google, Anthropic APIs) and leveraging inference engines to parallelize and speed up your jobs, visit our `inference guide`.
+
+## Launching Jobs in the Cloud
+
+So far we have been using Oumi locally. But one of the most exciting and unique Oumi features, compared to similar frameworks, is its integrated ability to launch jobs directly *to the cloud* (GCP, AWS, Azure, etc).
+
+This section of the quickstart is going to be a little different than the others, so please read this next bit carefully before you proceed.
+
+* This tutorial uses GCP; you'll need a [GCP account](https://cloud.google.com/free?hl=en). You can also use other cloud providers, such as AWS, Azure, etc. See `running jobs remotely` for more details.
+* In particular, Oumi uses [Skypilot](https://docs.skypilot.co/en/latest/docs/index.html), and the recommended way to use SkyPilot and GCP is with a [GCP service account](https://cloud.google.com/iam/docs/service-account-overview)
+* You will need to install Oumi with GCP support: `pip install oumi[gcp]`. Please note that we recommend setting up a different environment for each cloud provider you wish to use.
+* Depending on your precise use case, you may also need to install a few other packages from Google
+
+```bash
+conda install -c conda-forge google-cloud-sdk -y
+conda install -c conda-forge google-api-python-client -y
+conda install -c conda-forge google-cloud-storage -y
+```
+
+* There are multiple ways to handle credentials with GCP service accounts. We recommend creating a service account key in JSON format, then downloading it to the machine from which you plan to launch the cloud job. After that, you'll need to run a few more setup commands.
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
+gcloud auth activate-service-account --key-file=$GOOGLE_APPLICATION_CREDENTIALS
+gcloud config set project <YOUR_PROJECT>
+```
+
+You can now run `sky check` to confirm GCP is enabled.
+
+If you get stuck, please refer to our `running jobs remotely` section, as well as the documentation for GCP and SkyPilot linked above, for more information.
+
+### Launching your first cloud job with Oumi
+
+Once the one-time setup is out of the way, launching a new cloud job with Oumi is very simple.
+
+```yaml configs/recipes/smollm/sft/135m/quickstart_gcp_job.yaml
+name: smollm-135m-sft
+
+resources:
+  cloud: gcp
+  accelerators: "A100:1"
+  use_spot: false
+  disk_size: 100 # Disk size in GBs
+
+working_dir: .
+
+envs:
+  OUMI_RUN_NAME: smollm135m.train
+  # https://github.com/huggingface/tokenizers/issues/899#issuecomment-1027739758
+  TOKENIZERS_PARALLELISM: false
+
+setup: |
+  set -e
+  pip install uv && uv pip install oumi[gpu]
+
+run: |
+  set -e  # Exit if any command failed.
+  source ./configs/examples/misc/sky_init.sh
+
+  set -x
+  oumi train -c configs/recipes/smollm/sft/135m/quickstart_train.yaml
+
+  echo "Training complete!"
+```
+
+```bash
+oumi launch up -c configs/recipes/smollm/sft/135m/quickstart_gcp_job.yaml
+```
+
+To launch an evaluation job:
+
+```configs/recipes/smollm/evaluation/135m/quickstart_gcp_job.yaml
+name: smollm-135m-eval
+
+resources:
+  cloud: gcp
+  accelerators: "A100:1"
+  use_spot: false
+  disk_size: 100 # Disk size in GBs
+
+working_dir: .
+
+envs:
+  OUMI_RUN_NAME: smollm135m.eval
+  # https://github.com/huggingface/tokenizers/issues/899#issuecomment-1027739758
+  TOKENIZERS_PARALLELISM: false
+
+setup: |
+  set -e
+  pip install uv && uv pip install oumi[gpu,evaluation]
+
+run: |
+  set -e  # Exit if any command failed.
+  source ./configs/examples/misc/sky_init.sh
+
+  set -x
+  oumi evaluate -c configs/recipes/smollm/evaluation/135m/quickstart_eval.yaml
+
+  echo "Evaluation complete!"
+```
+
+```bash
+oumi launch up -c configs/recipes/smollm/evaluation/135m/quickstart_gcp_job.yaml
+```
+
+After you run one of the above commands, you should see some console output from Oumi which describes how your job is being provisioned and how the cloud installation is proceeding. In particular, your cluster will be assigned a semi-random name such as `sky-7fdd-ab183`, which you should take note of.
+
+After 15 minutes or so, Oumi should tell you that the run is complete.
+
+If you want to see the logs from your cloud run, you can pull them down to your local machine --
+
+```bash
+sky logs --sync-down sky-7fdd-ab183
+```
+
+<Warning>
+**Cloud services can be expensive!** Please keep an eye on your costs, and don't forget to tear down your cluster when you're done with this tutorial.
+</Warning>
+
+```bash
+sky down sky-7fdd-ab183
+```
+
+This command will *destroy your cluster*, including all data on those remote machines, so save your logs and artifacts first!
+
+## What's next?
+
+Although this example used GCP, Oumi natively supports a wide range of cloud providers. To explore the Cloud providers that we support, visit `running jobs remotely`.
+
+## Community
+
+⭐ If you like Oumi and you would like to support it, please give it a star on [GitHub](https://github.com/oumi-ai/oumi).
+
+👋 If you are interested in contributing, please read the [Contributor’s Guide](/development/contributing).
+

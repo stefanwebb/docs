@@ -1,0 +1,69 @@
+---
+title: "What is Oumi"
+description: "And why should you use it"
+icon: question
+---
+## What is Oumi?
+
+Oumi is an unconditionally open-source software library for the end-to-end development of specialized foundation models. It provides a higher level of abstraction for model development, building on other open source projects like Hugging Face, and can be used via a no-code command-line interface (CLI) tool, a low code Python SDK, or an enterprise-grade web UI. This means that you can build Generative AI applications faster, cheaper, with less expertise, and greater reliability.
+
+Let’s delve a little deeper:
+
+### End-to-end model development of foundation models
+
+Oumi contains the complete set of features to develop and specialize foundation models, from *data synthesis* at one end, to *fine-tuning* and *evaluation* in the middle, to *model optimization* and *deployment* at the other end. This contrasts with most other libraries, which focus on one specific part of the pipeline. However, the whole pipeline is necessary for successful model development, and with Oumi, you do not need to use one library for data synthesis, one for evaluation, another for quantization, and so on.
+
+### Higher level of abstraction
+
+The goal of Oumi is *not* to rebuild the wheel. Oumi wraps many lower-level open source projects like Hugging Face’s Python libraries and vLLM, rather than reimplementing lower-level functionality from scratch. The benefit of this approach is that we can focus on creating a *unified interface* for the various steps of model development. It is straightforward to move your job between your local machine, an on-premise server, or a cloud provider like AWS. And you can easily switch between inference backends, for example switching from Hugging Face’s Transformers, to vLLM running on an on-premise server, to OpenAI’s API.
+
+### Ease-of-use with flexibility
+
+A consequence of working at a higher level of abstraction than libraries such as Hugging Face’s is that Oumi can provide excellent ease-of-use. Model development tasks are specified *declaratively* via a .yaml configuration and Oumi comes with prebaked “recipes” for model inference, fine-tuning, and data synthesis on a number of the most widely used open source models. The configuration files can be used both from the CLI as well from Python. And if you need extra functionality beyond what the configuration can provide, all components are 100% customizable. For instance, when you’re fine-tuning a model with Reinforcement Learning you can implement and incorporate a custom reward function.
+
+### Unconditionally open
+
+Our founding team comprises engineers and researchers from products teams at Google, Apple, and Meta, including from the Google Gemini team. They were motivated by the desire to break open the silos of foundation model expertise and resources in Big Tech and make the technology accessible to all.
+
+Oumi (the company) is a Public Benefit Corporation and Oumi (the library) is open source, released under the permissive Apache 2.0 license. Our mission is to empower all engineers, researchers, and makers to build effective Generative AI applications with open source. Another pillar of our mission involves collaborating on open science with academics from top universities. We strongly believe in the public benefit of Generative AI technology.
+
+## Why should you use Oumi?
+
+One valid question to ask is, why not just use existing libraries? What value does Oumi offer beyond other projects? A few features distinguishing Oumi from its comparable open source projects include the fact that it can perform end-to-end model development rather than a subset of pipeline tasks and that it is backed by a highly technical team of engineers and researchers based in the US who keep a pulse on the latest research in Generative AI.
+
+Here is a table illustrating feature completeness across Oumi and a few comparable libraries that similarly use a declarative configuration file with a CLI:
+
+|  |  | Oumi | Llama-Factory | Axolotl |
+| :---- | :---- | :---: | :---: | :---: |
+| *Inference* | Model inference | ✅ | ✅ | ✅ |
+|  | Interactive chat | ✅ | ✅ | ❌ |
+| *Data* | Data synthesis | ✅ | ❌ | ❌ |
+|  | Exploratory data analysis | ✅ | ❌ | ❌ |
+| *Training* | Supervised fine-tuning and preference learning | ✅ | ✅ | ✅ |
+|  | GRPO | ✅ | ❌ | ✅ |
+|  | Monitoring | ✅ | ✅ | ✅ |
+| *Evaluation* | Benchmarking | ✅ | ✅ | ✅ |
+|  | LLM-as-a-Judge | ✅ | ❌ | ❌ |
+|  | Agent evaluation | 🚧 | ❌ | ❌ |
+| *Scaling* | Cloud integration(AWS, GPC, Azure, etc.) | ✅ | ❌ | ❌ |
+|  | Multi-GPU | ✅ | ✅ | ✅ |
+| *Optimization* | Quantization | ✅ | ✅ | ✅ |
+|  | Distillation | ✅ | ❌ | ❌ |
+|  | Specialized kernels | ✅ | ✅ | ✅ |
+| *Enterprise* | Technical support | ✅ | ❌ | ❌ |
+|  | Location | 🇺🇸 | 🇨🇳 | 🇺🇸 |
+
+## What can you build with Oumi? 
+
+In short, you can develop foundation models to build any Generative AI application in the *language* and *vision-language* domains. To mention a few, you can build question answering chatbots, agents that can navigate the web, and systems to understand unstructured documents and act on them. Support for additional modalities like video and sound will follow in the future. We’ll discuss applications in more detail in [a subsequent section]() *with a particular focus on agents*.
+
+One thing to note is that Oumi is a library for *model development* as opposed to *system development*. A complex system such as an agent is typically made up of one or several models in a pre-defined execution flow. We focus on the modeling side since the challenges in building reliable, cost-effective agents relate more heavily to model performance rather than how the models are connected. The model artifacts produced by Oumi follow conventional formats and can be used with standard tools for building and deploying agents.
+
+## How to get started?
+
+Hopefully at this juncture, you’re fired up and excited to try Oumi\! Where should you get started? Well, we have created a number of tutorials showing how to use the various features of Oumi to solve real problems. Check out the following resources and introduce yourself in the Discord:
+
+* [Oumi’s YouTube channel]()
+* [Oumi Quickstart Guide]()
+* [Project-based tutorials]()
+* [Discord server](https://discord.gg/oumi)

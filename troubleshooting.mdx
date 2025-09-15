@@ -1,0 +1,469 @@
+---
+title: "Troubleshooting"
+description: "How to get yourself out of an Oumi fix"
+icon: screwdriver
+---
+
+<Note>
+Getting help
+
+* Running into a problem? Check in with us on [Discord](https://discord.gg/oumi) - we're happy to help!
+* Still can't find a solution? Let us know by filing a new [GitHub Issue](https://github.com/oumi-ai/oumi/issues).
+</Note>
+
+## Installation
+### Windows
+If you'd like to use Oumi on Windows, we strongly suggest using
+[Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
+Installing natively on Windows outside of a WSL environment can lead to installation errors such as:
+
+```shell
+ERROR: Could not find a version that satisfies the requirement ... (from versions: none)
+```
+
+or runtime errors like:
+
+```shell
+ModuleNotFoundError: No module named 'resource'
+```
+
+### MacOS
+
+Oumi only supports Apple Silicon Macs, not Intel Macs. This is because PyTorch dropped support for the latter. Installing on Intel Macs can lead to errors like:
+
+```shell
+Using Python 3.11.11 environment at: /Users/moonshine/miniconda3/envs/oumi
+  × No solution found when resolving dependencies:
+  ╰─▶ Because only the following versions of torch are available:
+          torch<=2.5.0
+          torch==2.5.1
+          torch>2.6.0
+      and torch>=2.5.0,<=2.5.1 has no wheels with a matching platform tag
+      (e.g., `macosx_10_16_x86_64`), we can conclude that torch>=2.5.0,<=2.5.1
+      cannot be used.
+      And because oumi==0.1.dev1313+g33c1fa9 depends on torch>=2.5.0,<2.6.0,
+      we can conclude that oumi==0.1.dev1313+g33c1fa9 cannot be used.
+      And because only oumi[dev]==0.1.dev1313+g33c1fa9 is available and
+      you require oumi[dev], we can conclude that your requirements are
+      unsatisfiable.
+
+      hint: Wheels are available for `torch` (v2.5.1) on the following
+      platforms: `manylinux1_x86_64`, `manylinux2014_aarch64`,
+      `macosx_11_0_arm64`, `win_amd64`
+```
+
+## Out-of-memory (OOM)
+
+Out-of-memory (OOM) errors are a common challenge when working with large language models and datasets. Here are a few strategies to reduce GPU memory requirements.
+
+<Tip>
+Best practices:
+
+- Always monitor memory usage and performance metrics when applying these optimizations, using `nvidia-smi` and Oumi's telemetry output.
+- Combine multiple techniques for best results, but introduce changes gradually to isolate their effects.
+- Some techniques may trade off speed and model accuracy for memory efficiency. Choose the right balance for your specific use case.
+</Tip>
+
+### Training optimizations
+
+1. Reduce batch size:
+
+    ```python
+    from oumi.core.configs import TrainingConfig, TrainingParams
+
+    config = TrainingConfig(
+        training=TrainingParams(
+            per_device_train_batch_size=8,  # Decrease this value
+            gradient_accumulation_steps=4,  # Increase this value
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        per_device_train_batch_size: 8  # Decrease this value
+        gradient_accumulation_steps: 4  # Increase this value
+    ```
+
+  2. Enable gradient checkpointing:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            enable_gradient_checkpointing=True,
+            gradient_checkpointing_kwargs={"use_reentrant": False},
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        enable_gradient_checkpointing: true
+        gradient_checkpointing_kwargs:
+            use_reentrant: false
+    ```
+
+3. Use fused optimizers:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            optimizer="adamw_torch_fused",
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        optimizer: adamw_torch_fused
+    ```
+
+4. Use mixed precision training:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            mixed_precision_dtype="bf16",  # or "fp16"
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        mixed_precision_dtype: bf16  # or fp16
+    ```
+
+5. Train in half-precision:
+
+    ```python
+    config = TrainingConfig(
+        model=ModelParams(
+            torch_dtype_str="bfloat16",  # or "float16"
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+        torch_dtype_str: bfloat16  # or float16
+    ```
+
+6. Empty GPU cache more frequently:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            empty_device_cache_steps=50,  # Clear GPU cache every 50 steps
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        empty_device_cache_steps: 50  # Clear GPU cache every 50 steps
+    ```
+
+7. Tune CUDA Allocator Settings
+
+    It's sometimes possible to eliminate OOM errors (e.g., OOM-s caused by GPU VRAM fragmentation) by tuning CUDA allocator configuration as described in [PyTorch Optimizing Memory Usage](https://pytorch.org/docs/stable/notes/cuda.html#optimizing-memory-usage-with-pytorch-cuda-alloc-conf) e.g., by switching to a different allocator, tuning garbage collection settings. Example:
+
+    ```yaml
+    envs:
+        PYTORCH_CUDA_ALLOC_CONF: "garbage_collection_threshold:0.8,max_split_size_mb:128"
+    ```
+
+    ```bash
+    export PYTORCH_CUDA_ALLOC_CONF="garbage_collection_threshold:0.8,max_split_size_mb:128"
+    ```
+
+8. Use Paged Adam:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            optimizer="paged_adamw_32bit",
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        optimizer: paged_adamw_32bit
+    ```
+
+    <Note>
+    Paged Adam requires `bitsandbytes` to be installed.
+    </Note>
+
+### Model configuration
+
+1. Use flash attention:
+
+    ```python
+    config = TrainingConfig(
+        model=ModelParams(
+            attn_implementation="sdpa",  # or "flash_attention2"
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+        attn_implementation: sdpa  # or flash_attention2
+    ````
+
+2. Enable model compilation:
+
+    ```python
+    config = TrainingConfig(
+        training=TrainingParams(
+            compile=True,
+        ),
+    )
+    ````
+
+    ```yaml
+    training:
+        compile: true
+    ```
+
+3. Enable Liger Kernels:
+
+    ```python
+    from oumi.core.configs import ModelParams
+
+    config = TrainingConfig(
+        model=ModelParams(
+            enable_liger_kernel=True,
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+        enable_liger_kernel: true
+    ```
+
+4. Reduce training sequence length:
+
+    ```python
+    config = TrainingConfig(
+        model=ModelParams(
+            model_max_length=2048,  # Reduce sequence length
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+        model_max_length: 2048  # Reduce sequence length
+    ```
+
+5. Selectively freeze layers:
+
+    ```python
+    config = TrainingConfig(
+        model=ModelParams(
+            freeze_layers=["layer.0", "layer.1", "layer.2"],
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+        freeze_layers:
+            - layer.0
+            - layer.1
+            - layer.2
+    ```
+
+6. Enable ring attention:
+
+    ```python
+    config = TrainingConfig(
+        model=ModelParams(
+            attn_implementation="ring_attention",
+        ),
+    )
+    ```
+
+    ```yaml
+    model:
+    attn_implementation: ring_attention
+    ```
+
+### Parameter-efficient fine-tuning (PEFT)
+
+1. Enable LoRA:
+
+    ```python
+    from oumi.core.configs import PeftParams
+
+    config = TrainingConfig(
+        training=TrainingParams(use_peft=True),
+        peft=PeftParams(
+            lora_r=16,
+            lora_alpha=32,
+            lora_dropout=0.05,
+        ),
+    )
+    ```
+
+    ```yaml
+    training:
+        use_peft: true
+
+    peft:
+        lora_r: 16
+        lora_alpha: 32
+        lora_dropout: 0.05
+    ```
+
+### Distributed training with FSDP
+If you have access to multiple GPUs, you can leverage FSDP to distribute the training process across multiple GPUs. To run FSDP jobs, make sure to invoke your training job with [`torchrun`](https://pytorch.org/docs/stable/elastic/run.html) to run on multiple GPUs/nodes. We also provide the `oumi distributed` wrapper to automatically try to set the flags needed for `torchrun`. For example, you can simply run `oumi distributed torchrun -m oumi train -c path/to/train.yaml`.
+
+1. Enable distributed training:
+
+    ```python
+    from oumi.core.configs import FSDPParams
+    from oumi.core.configs.params.fsdp_params import ShardingStrategy
+
+    config = TrainingConfig(
+        fsdp=FSDPParams(
+            enable_fsdp=True,
+            sharding_strategy=ShardingStrategy.FULL_SHARD,
+        ),
+    )
+    ```
+
+    ```yaml
+    fsdp:
+        enable_fsdp: true
+        sharding_strategy: FULL_SHARD
+    ```
+
+2. Enable CPU offloading:
+
+    ```python
+    config = TrainingConfig(
+        fsdp=FSDPParams(
+            enable_fsdp=True,
+            cpu_offload=True,
+        ),
+    )
+    ```
+
+    ```yaml
+    fsdp:
+        enable_fsdp: true
+        cpu_offload: true
+    ```
+
+3. Disable Forward Prefetch:
+
+    ```python
+    config = TrainingConfig(
+        fsdp=FSDPParams(
+            enable_fsdp=True,
+            forward_prefetch=False,
+        ),
+    )
+    ```
+
+    ```yaml
+    fsdp:
+        enable_fsdp: true
+        forward_prefetch: false
+    ```
+
+4. Disable Backward Prefetch:
+
+    ```python
+    config = TrainingConfig(
+        fsdp=FSDPParams(
+            enable_fsdp=True,
+            backward_prefetch=BackwardPrefetch.NO_PREFETCH,
+        ),
+    )
+    ```
+
+    ```yaml
+    fsdp:
+        enable_fsdp: true
+        backward_prefetch: NO_PREFETCH
+    ```
+
+    <Warning>
+    Disabling FSDP's forward and backward prefetch can lead to significant slower training times, use with caution.
+    </Warning>
+
+## Inference and fine-tuning
+
+### Inference issues
+
+- Verify model and tokenizer paths are correct
+- Ensure [input data](/user_guides/infer/infer.md#input-data) is correctly formatted and preprocessed
+- Validate that the inference engine is compatible with your model type
+
+### Training stability & NaN loss
+
+- Lower the initial learning rate
+- Enable gradient clipping (or, apply further clipping if already enabled)
+- Add learning rate warmup
+
+```python
+config = TrainingConfig(
+    training=TrainingParams(
+        max_grad_norm=0.5,
+        optimizer="adamw_torch_fused",
+        warmup_ratio=0.01,
+        lr_scheduler_type="cosine",
+        learning_rate=1e-5,
+    ),
+)
+```
+
+## Cloud jobs
+
+### Launching remote jobs fails due to file mounts
+
+When running a remote job using a command like:
+
+```bash
+oumi launch up -c your/config/file.yaml
+```
+
+It's common to see failures with errors like:
+
+```bash
+ValueError: File mount source '~/.netrc' does not exist locally. To fix: check if it exists, and correct the path.
+```
+
+These errors indicate that your JobConfig contains a reference to a file that does not exist on your local machine. You can remove the offending line from your yaml file's `~oumi.core.configs.JobConfig.file_mounts` to resolve the error if it's unneeded. Otherwise, here's how to resolve the error for specific files often mounted by Oumi jobs:
+
+- `~/.netrc`: This file contains your Weights and Biases (WandB) credentials, which are needed to log your run's metrics to WandB.
+  - To fix, follow [these instructions](/development/dev_setup.md#optional-set-up-weights-and-biases)
+  - If you don't require WandB logging, disable either TrainingParams.`~oumi.core.configs.TrainingParams.enable_wandb` or EvaluationConfig.`~oumi.core.configs.EvaluationConfig.enable_wandb`, for training and evaluation jobs respectively. This is needed in addition to removing the file mount to prevent an error.
+- `~/.cache/huggingface/token`: This file contains your Huggingface credentials, which are needed to access gated datasets/models on HuggingFace Hub.
+  - To fix, follow [these instructions](/development/dev_setup.md#optional-set-up-huggingface)
+
+
+## Optimization
+### Quantization-specific issues
+
+Decreased model performance:
+
+- Increase `lora_r` and `lora_alpha` parameters in `oumi.core.configs.PeftParams`
+
+
+## Contributions
+### Pre-commit hook errors with VS Code
+
+- When committing changes, you may encounter an error with pre-commit hooks related to missing imports.
+- To fix this, make sure to start your vscode instance after activating your conda environment.
+
+  ```shell
+  conda activate oumi
+  code .  # inside the Oumi directory
+  ```
